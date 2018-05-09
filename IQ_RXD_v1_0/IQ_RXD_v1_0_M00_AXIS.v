@@ -1,7 +1,7 @@
 
 `timescale 1 ns / 1 ps
 
-	module myip_v1_0_M00_AXIS #
+	module IQ_RXD_v1_0_M00_AXIS #
 	(
 		// Users to add parameters here
 
@@ -15,10 +15,8 @@
 	)
 	(
 		// Users to add ports here
-		
 		input wire [1:0] IQ_RXD,
-		input wire CLK32,
-		
+        input wire CLK32,
 		// User ports ends
 		// Do not modify the ports beyond this line
 
@@ -58,7 +56,7 @@
 	// Define the states of state machine                                                
 	// The control state machine oversees the writing of input streaming data to the FIFO,
 	// and outputs the streaming data from the FIFO                                      
-	parameter [1:0] IDLE = 2'b00,        // This is the initial/idle state               
+	localparam [1:0] IDLE = 2'b00,        // This is the initial/idle state               
 	                                                                                     
 	                INIT_COUNTER  = 2'b01, // This state initializes the counter, once   
 	                                // the counter reaches C_M_START_COUNT count,        
@@ -105,7 +103,7 @@
 	reg window_old;
 	reg window_new;
 	wire clk_pos;
-	wire clk_neg;
+	wire clk_hold;
 	wire mid_tx_next;
 	assign clk_pos = ~clk_2 & clk_1;
 	assign clk_hold = ((~clk_1 & clk_2) || (~clk_2 & clk_1));
@@ -181,14 +179,15 @@
 	//tvalid generation
 	//axis_tvalid is asserted when the control state machine's state is SEND_STREAM and
 	//number of output streaming data is less than the NUMBER_OF_OUTPUT_WORDS.
-	assign axis_tvalid = ((mst_exec_state == SEND_STREAM) && (read_pointer < write_pointer) && tvalid_en)
+	assign axis_tvalid = ((mst_exec_state == SEND_STREAM) && (write_pointer > 0) && tvalid_en);
 	                                                                                               
 	// AXI tlast generation                                                                        
 	// axis_tlast is asserted number of output streaming data is NUMBER_OF_OUTPUT_WORDS-1          
 	// (0 to NUMBER_OF_OUTPUT_WORDS-1)                                                             
-	assign axis_tlast = ((read_pointer == write_pointer) && (wire_pointer > 0));                                
-	                                                                                               
-	                                                                                               
+	assign axis_tlast = ((read_pointer == write_pointer) && (write_pointer > 0));                                
+	
+	
+	assign tx_en = M_AXIS_TREADY && axis_tvalid;
 	// Delay the axis_tvalid and axis_tlast signal by one clock cycle                              
 	// to match the latency of M_AXIS_TDATA                                                        
 	always @(posedge M_AXIS_ACLK)                                                                  
@@ -205,55 +204,6 @@
 	    end                                                                                        
 	end                                                                                            
 
-
-	//read_pointer pointer
-
-	always@(posedge M_AXIS_ACLK)                                               
-	begin                                                                            
-	  if(!M_AXIS_ARESETN)                                                            
-	    begin                                                                        
-	      read_pointer <= 0;                                                         
-	      tx_done <= 1'b0;                                                           
-	    end                                                                          
-	  else                                                                           
-	    if (read_pointer < write_pointer)                                
-	      begin                                                                      
-	        if (tx_en)                                                               
-	          // read pointer is incremented after every read from the FIFO          
-	          // when FIFO read signal is enabled.                                   
-	          begin                                                                  
-	            read_pointer <= read_pointer + 1;                                    
-	            tx_done <= 1'b0;                                                     
-	          end                                                                    
-	      end                                                                        
-	    else if (read_pointer == write_pointer)                             
-	      begin                                                                      
-	        // tx_done is asserted when NUMBER_OF_OUTPUT_WORDS numbers of streaming data
-	        // has been out.                                                         
-	        tx_done <= 1'b1;
-			read_pointer <= 0;
-			write_pointer<= 0;
-			tvalid_en    <= 0;
-	      end                                                                        
-	end                                                                              
-
-
-	//FIFO read enable generation 
-
-	assign tx_en = M_AXIS_TREADY && axis_tvalid;   
-	                                                     
-	// Streaming output data is read from FIFO       
-	always @( posedge M_AXIS_ACLK )                  
-		begin                                            
-	    if(!M_AXIS_ARESETN)begin                                        
-	          stream_data_fifo <= 0;                      
-	        end                                          
-	    else if (tx_en)// && M_AXIS_TSTRB[byte_index]  
-	        begin                                        
-	          M_AXIS_TDATA <= stream_data_fifo[read_pointer];   
-	        end                                          
-	    end                                              
-
 	// -----------------------Add user logic here-----------------------------
 	//Make window to detect the status of the clk32
 	always @(posedge M_AXIS_ACLK)
@@ -262,7 +212,7 @@
 			{clk_2,clk_1}	<=	2'b00;
 			end
 		else begin
-			{clk_2,clk_1}	<=	{clk_1,clk32};
+			{clk_2,clk_1}	<=	{clk_1,CLK32};
 			end
 		end
 	//Make window to detect the status of the mid_tx_en
@@ -276,27 +226,20 @@
 			{window_old,window_new} <= {window_new,mid_tx_en};
 		end
 		
-	always@ (posedge M_AXIS_ACLK)
-		begin
-		if(!M_AXIS_ARESETN)begin
-			clk_start <= 1'b0;
-			end
-		else begin
-			if(clk_pos)begin
-				clk_start <=1'b1;
-				end
-			end
-		end
 	//when the clk32 doesn't change within 3'sys_clk,
 	//Assert the iq_last (Active High)
 	always@ (posedge M_AXIS_ACLK)
 		begin
 		if(!M_AXIS_ARESETN)begin
-			counter_i <= 2'b00;
-			counter_x <= 2'b00;
+			counter_i <= 3'd0;
+			counter_x <= 2'd0;
 			iq_last   <= 1'b0;
+			clk_start <= 1'b0;
 			end
 		else begin 
+			if(clk_pos)begin
+				clk_start <=1'b1;
+				end
 			if((counter_i < 7) && clk_start)begin
 				counter_i <= counter_i + 1;
 				end
@@ -324,27 +267,44 @@
 		begin
 		if(!M_AXIS_ARESETN)begin
 			write_pointer <= 3'd0;
+			read_pointer  <= 3'd0;
 			tvalid_en 	  <= 1'b0;
+			tx_done		  <= 1'b0;
+			stream_data_out <= 32'd0;
 			end
-		else if(mid_tx_next)begin
+		else begin
+		      if(mid_tx_next)begin
 				if(mid_buff == 0)begin
 					tvalid_en <= 1'b0;
 					end
 				else if(write_pointer < 7)begin
 						stream_data_fifo[write_pointer] <= mid_buff;
 						write_pointer <= write_pointer +1;
-						tvalid	<= 1'b0;
+						tvalid_en	<= 1'b0;
 						end
 					else
 						stream_data_fifo[write_pointer] <= mid_buff;
 						tvalid_en <= 1'b1;
-				end
+			     end
 			else if(iq_last)begin
 					stream_data_fifo[write_pointer] <= mid_buff;
 					tvalid_en <= 1'b1;
 					end
 			end
-		end
+			
+			if(tx_en)begin
+				stream_data_out  <= stream_data_fifo[read_pointer];
+				if(read_pointer < write_pointer)begin
+					read_pointer <= read_pointer + 1;
+					tx_done		 <= 1'b0;
+					end
+				else
+					tx_done	<= 1'b1;
+					read_pointer <=3'd0;
+					write_pointer<=3'd0;
+					tvalid_en	 <=1'b0;
+				end
+		   end
 	//IQ receive the signal
 	//when received 2*16 bits signal, asserted the mid_tx_en
 	always@ (posedge M_AXIS_ACLK)
@@ -362,82 +322,82 @@
 				iq_last_ready <= 1'b0;
 				case (rxd_status)
 				
-				5'd0:begin
+				4'd0:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
 				end
-				5'd1:begin
+				4'd1:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
 				end
-				5'd2:begin
+				4'd2:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
 				end
-				5'd3:begin
+				4'd3:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
 				end	
-				5'd4:begin
+				4'd4:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
 				end	
-				5'd5:begin
+				4'd5:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
 				end	
-				5'd6:begin
+				4'd6:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
 				end
-				5'd7:begin
+				4'd7:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
 				end
-				5'd8:begin
+				4'd8:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
 				end
-				5'd9:begin
+				4'd9:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
 				end
-				5'd10:begin
+				4'd10:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
 				end
-				5'd11:begin
+				4'd11:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
 				end
-				5'd12:begin
+				4'd12:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
 				end
-				5'd13:begin
+				4'd13:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
 				end
-				5'd14:begin
+				4'd14:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
 				end
-				5'd15:begin
+				4'd15:begin
 				rxd_status <= rxd_status + 1;
 				i_receive[rxd_status] = IQ_RXD[0];
 				q_receive[rxd_status] = IQ_RXD[1];
@@ -448,11 +408,74 @@
 				endcase
 				end
 			else if(iq_last && rxd_status> 0)begin
-				i_receive[15:rxd_status] = 0;
-				q_receive[15:rxd_status] = 0;
+			    case (rxd_status)
+			    4'd1:begin
+				i_receive[15:1] = 0;
+				q_receive[15:1] = 0;
+				end
+				4'd2:begin
+				i_receive[15:2] = 0;
+                q_receive[15:2] = 0;
+                end
+                4'd3:begin
+				i_receive[15:3] = 0;
+                q_receive[15:3] = 0;
+                end 
+                4'd4:begin
+                i_receive[15:4] = 0;
+                q_receive[15:4] = 0;
+                end
+                4'd5:begin
+                i_receive[15:5] = 0;
+                q_receive[15:5] = 0;
+                end           
+                4'd6:begin
+                i_receive[15:6] = 0;
+                q_receive[15:6] = 0;
+                end
+                4'd7:begin
+                i_receive[15:7] = 0;
+                q_receive[15:7] = 0;
+                end           
+                4'd8:begin
+                i_receive[15:8] = 0;
+                q_receive[15:8] = 0;
+                end           
+                4'd9:begin
+                i_receive[15:9] = 0;
+                q_receive[15:9] = 0;
+                end           
+                4'd10:begin
+                i_receive[15:10] = 0;
+                q_receive[15:10] = 0;
+                end
+                4'd11:begin
+                i_receive[15:11] = 0;
+                q_receive[15:11] = 0;
+                end             
+                4'd12:begin
+                i_receive[15:12] = 0;
+                q_receive[15:12] = 0;
+                end            
+                4'd13:begin
+                i_receive[15:13] = 0;
+                q_receive[15:13] = 0;
+                end            
+                4'd14:begin
+                i_receive[15:14] = 0;
+                q_receive[15:14] = 0;
+                end       
+                4'd15:begin
+                i_receive[15] = 0;
+                q_receive[15] = 0;
+                end         
+                endcase                                                                                                                          
 				mid_buff [0] <= i_receive;
 				mid_buff [16]<= q_receive; 
 				iq_last_ready <=  1'b1;
+				end
+		      end
+		   end
 	// User logic ends
 
 	endmodule
