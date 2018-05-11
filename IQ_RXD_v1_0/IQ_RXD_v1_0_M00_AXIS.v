@@ -83,7 +83,7 @@
 	reg [C_M_AXIS_TDATA_WIDTH-1 : 0] 	stream_data_out;
 	wire  	tx_en;
 	//The master has issued all the streaming data stored in FIFO
-	reg  	tx_done;
+//	reg  	tx_done;
 
 
 	// I/O Connections assignments
@@ -164,7 +164,7 @@
 	        // The example design streaming master functionality starts       
 	        // when the master drives output tdata from the FIFO and the slave
 	        // has finished storing the S_AXIS_TDATA                          
-	        if (tx_done)                                                      
+	        if (!tx_en)                                                      
 	          begin                                                           
 	            mst_exec_state <= IDLE;                                       
 	          end                                                             
@@ -225,7 +225,6 @@
 		else 
 			{window_old,window_new} <= {window_new,mid_tx_en};
 		end
-		
 	//when the clk32 doesn't change within 3'sys_clk,
 	//Assert the iq_last (Active High)
 	always@ (posedge M_AXIS_ACLK)
@@ -237,9 +236,9 @@
 			clk_start <= 1'b0;
 			end
 		else begin 
-			if(clk_pos)begin
-				clk_start <=1'b1;
-				end
+		   if(clk_pos)begin
+                clk_start <=1'b1;
+            end  
 			if((counter_i < 7) && clk_start)begin
 				counter_i <= counter_i + 1;
 				end
@@ -263,7 +262,7 @@
 		
 	//wire_pointer pointer
 	//when Front end recceived 32bits and transfer to the mid_buff
-	always@ (posedge M_AXIS_ACLK)
+ 	always@ (posedge M_AXIS_ACLK)
 		begin
 		if(!M_AXIS_ARESETN)begin
 			write_pointer <= 3'd0;
@@ -273,22 +272,64 @@
 			stream_data_out <= 32'd0;
 			end
 		else begin
-		      if(mid_tx_next)begin
+		    if(mid_tx_next && (mid_buff >0) && (write_pointer < 7))begin
+				stream_data_fifo[write_pointer] <= mid_buff;
+				write_pointer <= write_pointer +1;
+				tvalid_en	<= 1'b0;
+				end
+			if(mid_tx_next && (mid_buff >0) && (write_pointer == 7))begin
+				stream_data_fifo[write_pointer] <= mid_buff;
+				tvalid_en <= 1'b1;
+				end 
+			if(iq_last_ready && (mid_buff > 0))begin
+				stream_data_fifo[write_pointer] <= mid_buff;
+				tvalid_en <= 1'b1;
+				end
+			if(tx_en)begin
+				if(read_pointer < write_pointer)begin
+				    stream_data_out  <= stream_data_fifo[read_pointer];
+					read_pointer     <= read_pointer + 1;
+//					tx_done		     <= 1'b0;
+					end
+				else begin
+					if(write_pointer == 7)begin
+						stream_data_out <=stream_data_fifo[read_pointer];
+						end
+//					tx_done	<= 1'b1;
+					read_pointer <=3'd0;
+					write_pointer<=3'd0;
+					tvalid_en	 <=1'b0;
+					end
+				end
+			end
+		end 
+/* 	always@ (posedge M_AXIS_ACLK)
+		begin
+		if(!M_AXIS_ARESETN)begin
+			write_pointer <= 3'd0;
+			read_pointer  <= 3'd0;
+			tvalid_en 	  <= 1'b0;
+			tx_done		  <= 1'b0;
+			stream_data_out <= 32'd0;
+			end
+		else begin
+		    if(mid_tx_next)begin
 				if(mid_buff == 0)begin
 					tvalid_en <= 1'b0;
 					end
 				else if(write_pointer < 7)begin
 						stream_data_fifo[write_pointer] <= mid_buff;
-						write_pointer <= write_pointer +1;
-						tvalid_en	<= 1'b0;
+						write_pointer 					<= write_pointer +1;
+						tvalid_en	                    <= 1'b0;
 						end
-					else
+					else begin
 						stream_data_fifo[write_pointer] <= mid_buff;
-						tvalid_en <= 1'b1;
-			     end
-			else if(iq_last)begin
-					stream_data_fifo[write_pointer] <= mid_buff;
-					tvalid_en <= 1'b1;
+						tvalid_en                       <= 1'b1;
+						end
+					end
+			else if(iq_last_ready)begin
+					stream_data_fifo[write_pointer]     <= mid_buff;
+					tvalid_en                           <= 1'b1;
 					end
 			end
 			
@@ -304,7 +345,7 @@
 					write_pointer<=3'd0;
 					tvalid_en	 <=1'b0;
 				end
-		   end
+		   end */
 	//IQ receive the signal
 	//when received 2*16 bits signal, asserted the mid_tx_en
 	always@ (posedge M_AXIS_ACLK)
@@ -326,6 +367,7 @@
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
 				rxd_status <= rxd_status + 1;
+				mid_tx_en  <=1'b0;
 				end
 				4'd1:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
@@ -398,76 +440,76 @@
 				rxd_status <= rxd_status + 1;
 				end
 				4'd15:begin
-				rxd_status <= rxd_status + 1;
-				i_receive[rxd_status] = IQ_RXD[0];
-				q_receive[rxd_status] = IQ_RXD[1];
-				mid_buff [0] <= i_receive;
-				mid_buff [16]<= q_receive;
+				i_receive [15] <= IQ_RXD[0];
+				q_receive [31] <= IQ_RXD[1];
+				mid_buff [15:0]  <= {IQ_RXD[0],i_receive[14:0]};
+				mid_buff [31:16] <= {IQ_RXD[1],q_receive[14:0]};
 				mid_tx_en    <= 1'b1;
+				rxd_status <= rxd_status + 1;
 				end
 				endcase
 				end
 			else if(iq_last && rxd_status> 0)begin
 			    case (rxd_status)
 			    4'd1:begin
-				i_receive[15:1] = 0;
-				q_receive[15:1] = 0;
+				i_receive[15:1] <= 0;
+				q_receive[15:1] <= 0;
 				end
 				4'd2:begin
-				i_receive[15:2] = 0;
-                q_receive[15:2] = 0;
+				i_receive[15:2] <= 0;
+                q_receive[15:2] <= 0;
                 end
                 4'd3:begin
-				i_receive[15:3] = 0;
-                q_receive[15:3] = 0;
+				i_receive[15:3] <= 0;
+                q_receive[15:3] <= 0;
                 end 
                 4'd4:begin
-                i_receive[15:4] = 0;
-                q_receive[15:4] = 0;
+                i_receive[15:4] <= 0;
+                q_receive[15:4] <= 0;
                 end
                 4'd5:begin
-                i_receive[15:5] = 0;
-                q_receive[15:5] = 0;
+                i_receive[15:5] <= 0;
+                q_receive[15:5] <= 0;
                 end           
                 4'd6:begin
-                i_receive[15:6] = 0;
-                q_receive[15:6] = 0;
+                i_receive[15:6] <= 0;
+                q_receive[15:6] <= 0;
                 end
                 4'd7:begin
-                i_receive[15:7] = 0;
-                q_receive[15:7] = 0;
+                i_receive[15:7] <= 0;
+                q_receive[15:7] <= 0;
                 end           
                 4'd8:begin
-                i_receive[15:8] = 0;
-                q_receive[15:8] = 0;
+                i_receive[15:8] <= 0;
+                q_receive[15:8] <= 0;
                 end           
                 4'd9:begin
-                i_receive[15:9] = 0;
-                q_receive[15:9] = 0;
+                i_receive[15:9] <= 0;
+                q_receive[15:9] <= 0;
                 end           
                 4'd10:begin
-                i_receive[15:10] = 0;
-                q_receive[15:10] = 0;
+                i_receive[15:10] <= 0;
+                q_receive[15:10] <= 0;
                 end
                 4'd11:begin
-                i_receive[15:11] = 0;
-                q_receive[15:11] = 0;
+                i_receive[15:11] <= 0;
+                q_receive[15:11] <= 0;
                 end             
                 4'd12:begin
-                i_receive[15:12] = 0;
-                q_receive[15:12] = 0;
+                i_receive[15:12] <= 0;
+                q_receive[15:12] <= 0;
                 end            
                 4'd13:begin
-                i_receive[15:13] = 0;
-                q_receive[15:13] = 0;
+                i_receive[15:13] <= 0;
+                q_receive[15:13] <= 0;
                 end            
                 4'd14:begin
-                i_receive[15:14] = 0;
-                q_receive[15:14] = 0;
+                i_receive[15:14] <= 0;
+                q_receive[15:14] <= 0;
                 end       
                 4'd15:begin
-                i_receive[15] = 0;
-                q_receive[15] = 0;
+                i_receive[15] <= 0;
+                q_receive[15] <= 0;
                 end         
                 endcase                                                                                                                          
 				mid_buff [0] <= i_receive;
