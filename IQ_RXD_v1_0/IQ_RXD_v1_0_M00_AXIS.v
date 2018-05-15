@@ -121,6 +121,7 @@
 	reg [3:0]  rxd_status;
 	reg mid_tx_en;
 	reg tvalid_en;
+	reg iq_first;
 	reg iq_last_ready;
 	// Control state machine implementation                             
 	always @(posedge M_AXIS_ACLK)                                             
@@ -289,13 +290,11 @@
 				if(read_pointer < write_pointer)begin
 				    stream_data_out  <= stream_data_fifo[read_pointer];
 					read_pointer     <= read_pointer + 1;
-//					tx_done		     <= 1'b0;
 					end
 				else begin
 					if(write_pointer == 7)begin
 						stream_data_out <=stream_data_fifo[read_pointer];
-						end
-//					tx_done	<= 1'b1;
+						end;
 					read_pointer <=3'd0;
 					write_pointer<=3'd0;
 					tvalid_en	 <=1'b0;
@@ -303,49 +302,7 @@
 				end
 			end
 		end 
-/* 	always@ (posedge M_AXIS_ACLK)
-		begin
-		if(!M_AXIS_ARESETN)begin
-			write_pointer <= 3'd0;
-			read_pointer  <= 3'd0;
-			tvalid_en 	  <= 1'b0;
-			tx_done		  <= 1'b0;
-			stream_data_out <= 32'd0;
-			end
-		else begin
-		    if(mid_tx_next)begin
-				if(mid_buff == 0)begin
-					tvalid_en <= 1'b0;
-					end
-				else if(write_pointer < 7)begin
-						stream_data_fifo[write_pointer] <= mid_buff;
-						write_pointer 					<= write_pointer +1;
-						tvalid_en	                    <= 1'b0;
-						end
-					else begin
-						stream_data_fifo[write_pointer] <= mid_buff;
-						tvalid_en                       <= 1'b1;
-						end
-					end
-			else if(iq_last_ready)begin
-					stream_data_fifo[write_pointer]     <= mid_buff;
-					tvalid_en                           <= 1'b1;
-					end
-			end
-			
-			if(tx_en)begin
-				stream_data_out  <= stream_data_fifo[read_pointer];
-				if(read_pointer < write_pointer)begin
-					read_pointer <= read_pointer + 1;
-					tx_done		 <= 1'b0;
-					end
-				else
-					tx_done	<= 1'b1;
-					read_pointer <=3'd0;
-					write_pointer<=3'd0;
-					tvalid_en	 <=1'b0;
-				end
-		   end */
+
 	//IQ receive the signal
 	//when received 2*16 bits signal, asserted the mid_tx_en
 	always@ (posedge M_AXIS_ACLK)
@@ -357,6 +314,7 @@
 			q_receive     <= 16'd0;
 			mid_buff   	  <= 32'd0;
 			iq_last_ready <= 1'b0;
+			iq_first      <= 1'b1;
 			end
 		else begin
 			if (clk_pos)begin
@@ -364,11 +322,19 @@
 				case (rxd_status)
 				
 				4'd0:begin
-				i_receive[rxd_status] <= IQ_RXD[0];
-				q_receive[rxd_status] <= IQ_RXD[1];
-				rxd_status <= rxd_status + 1;
-				mid_tx_en  <=1'b0;
-				end
+				if(iq_first && !((IQ_RXD == 2'b00) || (IQ_RXD[0] == 1'bz) || (IQ_RXD[1] == 1'bz)))begin
+					i_receive[rxd_status] <= IQ_RXD[0];
+					q_receive[rxd_status] <= IQ_RXD[1];
+					rxd_status <= rxd_status + 1;
+					mid_tx_en  <=1'b0;
+					iq_first   <=1'b0;
+					end
+				else if(!iq_first)begin
+					i_receive[rxd_status] <= IQ_RXD[0];
+					q_receive[rxd_status] <= IQ_RXD[1];
+					rxd_status	<=rxd_status + 1;
+					mid_tx_en	<=1'b0;
+					end
 				4'd1:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
