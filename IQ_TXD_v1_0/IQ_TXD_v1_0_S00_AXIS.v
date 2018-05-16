@@ -162,27 +162,29 @@
 	    end  
 	  else begin
 		if(wp_clear && writes_done)begin
-			write_pointer	= 0;
+			write_pointer	 =   0;
 			readygo         <=1'b1;
 			end
 			
 	    if (fifo_wren)
 	      begin
-	        if ((write_pointer == NUMBER_OF_INPUT_WORDS-1)|| S_AXIS_TLAST)
-	          begin
+	        if (write_pointer == NUMBER_OF_INPUT_WORDS-1)begin
 				// reads_done is asserted when NUMBER_OF_INPUT_WORDS numbers of streaming data 
 				// has been written to the FIFO which is also marked by S_AXIS_TLAST(kept for optional usage).
 				stream_data_fifo[write_pointer] <= S_AXIS_TDATA;
-				writes_done <= 1'b1;
-                readygo     <= 1'b0;
+				writes_done 					<= 1'b1;
+                readygo     					<= 1'b0;
 	          end
-			else begin
-		        // write pointer is incremented after every write to the FIFO
-	            // when FIFO write signal is enabled.
-				stream_data_fifo[write_pointer] <= S_AXIS_TDATA ;
-	            write_pointer = write_pointer + 1;
-	            writes_done <= 1'b0;
+			else if(S_AXIS_TLAST)begin
+				stream_data_fifo[write_pointer] <= S_AXIS_TDATA;
+	            write_pointer 					 = write_pointer + 1;
+	            writes_done 					<= 1'b1;
+				readygo							<= 1'b0;
 	            end
+			else 
+				stream_data_fifo[write_pointer] <= S_AXIS_TDATA;
+				write_pointer 					 = write_pointer + 1;
+				writes_done 					<= 1'b0;
 	         end  
 	     end
 	end
@@ -243,14 +245,14 @@
     begin
         if(!S_AXIS_ARESETN)
             begin
-                read_pointer <= 0;
-                iq_start     <=1'b0;
-                iq_buffer     <= 0;
+                read_pointer  <=  0;
+                iq_start      <=1'b0;
+                iq_buffer     <=  0;
                 first         <=1'b1;
-                wp_clear     <=1'b0;
+                wp_clear      <=1'b0;
             end
         else    begin
-            wp_clear =1'b0;
+            wp_clear = 1'b0;
             if( fifo_rden  && (next_go || first)  &&  locked )
                 begin
                     first <= 1'b0;
@@ -259,20 +261,20 @@
                         iq_start    <= 1'b1;
                         if (read_pointer == wp_wire)begin
                             read_pointer <= 0;
-                            wp_clear     = 1'b1;
+                            wp_clear      = 1'b1;
                             end
                         else begin
                             read_pointer <= read_pointer + 1;
                         end
                     end
                     else begin
-                        iq_buffer      <= stream_data_fifo [read_pointer];
-                        iq_start     <= 1'b1;
-                        read_pointer    <= read_pointer + 1;
-                        if (read_pointer == wp_wire)begin
+						if (read_pointer == wp_wire)begin
                             read_pointer <= 0;
-                            wp_clear     = 1'b1;
+                            wp_clear      = 1'b1;
                             end
+                        iq_buffer        <= stream_data_fifo [read_pointer];
+                        iq_start         <= 1'b1;
+                        read_pointer     <= read_pointer + 1;
                     end
                 end
             else if((!fifo_rden_wire) && iq_end_wire) begin
@@ -302,7 +304,7 @@
 	
 	//IQ transmit proccess
 	
-    always @(posedge CLK32)
+    always @(negedge CLK32)
     begin
         if(iq_start_wire)
             begin

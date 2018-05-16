@@ -269,7 +269,6 @@
 			write_pointer <= 3'd0;
 			read_pointer  <= 3'd0;
 			tvalid_en 	  <= 1'b0;
-			tx_done		  <= 1'b0;
 			stream_data_out <= 32'd0;
 			end
 		else begin
@@ -278,12 +277,11 @@
 				write_pointer <= write_pointer +1;
 				tvalid_en	<= 1'b0;
 				end
-			if(mid_tx_next && (mid_buff >0) && (write_pointer == 7))begin
+			if(mid_tx_next && (mid_buff >0) && (write_pointer == 7) && (!tvalid_en))begin
 				stream_data_fifo[write_pointer] <= mid_buff;
 				tvalid_en <= 1'b1;
 				end 
-			if(iq_last_ready && (mid_buff > 0))begin
-				stream_data_fifo[write_pointer] <= mid_buff;
+			if(iq_last_ready && (mid_buff >0) && (write_pointer < 7) && (!tvalid_en))begin
 				tvalid_en <= 1'b1;
 				end
 			if(tx_en)begin
@@ -294,7 +292,7 @@
 				else begin
 					if(write_pointer == 7)begin
 						stream_data_out <=stream_data_fifo[read_pointer];
-						end;
+						end
 					read_pointer <=3'd0;
 					write_pointer<=3'd0;
 					tvalid_en	 <=1'b0;
@@ -322,7 +320,7 @@
 				case (rxd_status)
 				
 				4'd0:begin
-				if(iq_first && !((IQ_RXD == 2'b00) || (IQ_RXD[0] == 1'bz) || (IQ_RXD[1] == 1'bz)))begin
+				if(iq_first && ((IQ_RXD[0] == 1'b1) || (IQ_RXD[1] == 1'b1)))begin
 					i_receive[rxd_status] <= IQ_RXD[0];
 					q_receive[rxd_status] <= IQ_RXD[1];
 					rxd_status <= rxd_status + 1;
@@ -335,6 +333,7 @@
 					rxd_status	<=rxd_status + 1;
 					mid_tx_en	<=1'b0;
 					end
+				end
 				4'd1:begin
 				i_receive[rxd_status] <= IQ_RXD[0];
 				q_receive[rxd_status] <= IQ_RXD[1];
@@ -418,72 +417,74 @@
 			else if(iq_last && rxd_status> 0)begin
 			    case (rxd_status)
 			    4'd1:begin
-				i_receive[15:1] <= 0;
-				q_receive[15:1] <= 0;
+				mid_buff[15: 0] <= {15'd0,i_receive[0]};
+				mid_buff[31:16] <= {15'd0,q_receive[0]};
 				end
 				4'd2:begin
-				i_receive[15:2] <= 0;
-                q_receive[15:2] <= 0;
+				mid_buff[15: 0] <= {14'd0,i_receive[1:0]};
+				mid_buff[31:16] <= {14'd0,q_receive[1:0]};
                 end
                 4'd3:begin
-				i_receive[15:3] <= 0;
-                q_receive[15:3] <= 0;
+				mid_buff[15: 0] <= {13'd0,i_receive[2:0]};
+				mid_buff[31:16] <= {13'd0,q_receive[2:0]};
                 end 
                 4'd4:begin
-                i_receive[15:4] <= 0;
-                q_receive[15:4] <= 0;
+				mid_buff[15: 0] <= {12'd0,i_receive[3:0]};
+				mid_buff[31:16] <= {12'd0,q_receive[3:0]};
                 end
                 4'd5:begin
-                i_receive[15:5] <= 0;
-                q_receive[15:5] <= 0;
+				mid_buff[15: 0] <= {11'd0,i_receive[4:0]};
+				mid_buff[31:16] <= {11'd0,q_receive[4:0]};
                 end           
                 4'd6:begin
-                i_receive[15:6] <= 0;
-                q_receive[15:6] <= 0;
+				mid_buff[15: 0] <= {10'd0,i_receive[5:0]};
+				mid_buff[31:16] <= {10'd0,q_receive[5:0]};
                 end
                 4'd7:begin
-                i_receive[15:7] <= 0;
-                q_receive[15:7] <= 0;
+				mid_buff[15: 0] <= {9'd0,i_receive[6:0]};
+				mid_buff[31:16] <= {9'd0,q_receive[6:0]};
                 end           
                 4'd8:begin
-                i_receive[15:8] <= 0;
-                q_receive[15:8] <= 0;
+				mid_buff[15: 0] <= {8'd0,i_receive[7:0]};
+				mid_buff[31:16] <= {8'd0,q_receive[7:0]};
                 end           
                 4'd9:begin
-                i_receive[15:9] <= 0;
-                q_receive[15:9] <= 0;
+				mid_buff[15: 0] <= {7'd0,i_receive[8:0]};
+				mid_buff[31:16] <= {7'd0,q_receive[8:0]};
                 end           
                 4'd10:begin
-                i_receive[15:10] <= 0;
-                q_receive[15:10] <= 0;
+				mid_buff[15: 0] <= {6'd0,i_receive[9:0]};
+				mid_buff[31:16] <= {6'd0,q_receive[9:0]};
                 end
                 4'd11:begin
-                i_receive[15:11] <= 0;
-                q_receive[15:11] <= 0;
+				mid_buff[15: 0] <= {5'd0,i_receive[10:0]};
+				mid_buff[31:16] <= {5'd0,q_receive[10:0]};
                 end             
                 4'd12:begin
-                i_receive[15:12] <= 0;
-                q_receive[15:12] <= 0;
+				mid_buff[15: 0] <= {4'd0,i_receive[11:0]};
+				mid_buff[31:16] <= {4'd0,q_receive[11:0]};
                 end            
                 4'd13:begin
-                i_receive[15:13] <= 0;
-                q_receive[15:13] <= 0;
+				mid_buff[15: 0] <= {3'd0,i_receive[12:0]};
+				mid_buff[31:16] <= {3'd0,q_receive[12:0]};
                 end            
                 4'd14:begin
-                i_receive[15:14] <= 0;
-                q_receive[15:14] <= 0;
+				mid_buff[15: 0] <= {2'd0,i_receive[13:0]};
+				mid_buff[31:16] <= {2'd0,q_receive[13:0]};
                 end       
                 4'd15:begin
-                i_receive[15] <= 0;
-                q_receive[15] <= 0;
+				mid_buff[15: 0] <= {1'd0,i_receive[14:0]};
+				mid_buff[31:16] <= {1'd0,q_receive[14:0]};
                 end         
-                endcase                                                                                                                          
-				mid_buff [0] <= i_receive;
-				mid_buff [16]<= q_receive; 
+                endcase
 				iq_last_ready <=  1'b1;
+				mid_tx_en     <= 1'b1;
 				end
+			else if(iq_last && rxd_status == 0)begin
+				iq_last_ready <= 1'b1;
 		      end
 		   end
+		end
 	// User logic ends
 
 	endmodule
