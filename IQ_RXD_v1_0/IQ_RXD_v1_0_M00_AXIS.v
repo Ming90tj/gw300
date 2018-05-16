@@ -284,19 +284,26 @@
 			if(iq_last_ready && (mid_buff >0) && (write_pointer < 7) && (!tvalid_en))begin
 				tvalid_en <= 1'b1;
 				end
-			if(tx_en)begin
-				if(read_pointer < write_pointer)begin
-				    stream_data_out  <= stream_data_fifo[read_pointer];
-					read_pointer     <= read_pointer + 1;
-					end
-				else begin
-					if(write_pointer == 7)begin
-						stream_data_out <=stream_data_fifo[read_pointer];
-						end
-					read_pointer <=3'd0;
-					write_pointer<=3'd0;
-					tvalid_en	 <=1'b0;
-					end
+			if(tx_en && (write_pointer == 7) && (read_pointer < write_pointer))begin
+				stream_data_out  <= stream_data_fifo[read_pointer];
+				read_pointer     <= read_pointer + 1;
+				tvalid_en	     <= 1'b1;
+				end
+			if(tx_en && (write_pointer == 7) && (read_pointer == write_pointer))begin
+				stream_data_out <=stream_data_fifo[read_pointer];
+				read_pointer    <= 3'd0;
+				write_pointer   <= 3'd0;
+				tvalid_en	    <= 1'b0;
+				end
+			if(tx_en && (write_pointer < 7) && (read_pointer < write_pointer))begin
+				stream_data_out   <= stream_data_fifo[read_pointer];
+				read_pointer	  <= read_pointer + 1;
+				tvalid_en		  <= 1'b1;
+				end
+			if(tx_en && (write_pointer < 7) && (read_pointer == write_pointer))begin
+				read_pointer	<= 3'd0;
+				write_pointer	<= 3'd0;
+				tvalid			<= 1'b0;
 				end
 			end
 		end 
